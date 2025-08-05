@@ -523,15 +523,65 @@ class GSBConference {
         this.initSpeakerModal();
     }
 
-    initSpeakerCards() {
+    async initSpeakerCards() {
         const speakerCards = document.querySelectorAll('.speaker-card.clickable');
-        
+
+        // Fetch Sessionize data if not already available
+        if (!this.sessionizeData || !this.sessionizeData.speakers) {
+            try {
+                const response = await fetch('https://sessionize.com/api/v2/2arq0ql8/view/All');
+                this.sessionizeData = await response.json();
+            } catch (error) {
+                console.error('Error fetching Sessionize data for speaker cards:', error);
+            }
+        }
+
+        // Build mapping from normalized name to speaker object
+        const speakers = (this.sessionizeData && this.sessionizeData.speakers) ? this.sessionizeData.speakers : [];
+        const speakerMap = {};
+        speakers.forEach(speaker => {
+            // Normalize name: lowercase, replace spaces and special chars with hyphens
+            let normName = speaker.fullName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            speakerMap[normName] = speaker;
+        });
+
         speakerCards.forEach(card => {
+            const speakerId = card.dataset.speakerId;
+            const speakerData = speakerMap[speakerId];
+            if (speakerData) {
+                // Update image
+                const imgEl = card.querySelector('.speaker-image img');
+                if (imgEl && speakerData.profilePicture) {
+                    imgEl.src = speakerData.profilePicture;
+                    imgEl.alt = speakerData.fullName || imgEl.alt;
+                }
+                // Update name
+                const nameEl = card.querySelector('h4');
+                if (nameEl && speakerData.fullName) {
+                    nameEl.textContent = speakerData.fullName;
+                }
+                // Update position/tagline
+                const titleEl = card.querySelector('.speaker-title');
+                if (titleEl && speakerData.tagLine) {
+                    titleEl.textContent = speakerData.tagLine;
+                }
+                // Update topic (first session title)
+                const topicEl = card.querySelector('.speaker-topic');
+                if (topicEl && speakerData.sessions && speakerData.sessions.length > 0) {
+                    topicEl.textContent = speakerData.sessions[0].name;
+                }
+                // Update bio
+                const bioEl = card.querySelector('.speaker-bio');
+                if (bioEl && speakerData.bio) {
+                    bioEl.innerHTML = speakerData.bio;
+                }
+            } else {
+                // Hide card if no matching speaker
+                card.style.display = 'none';
+            }
             card.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                const speakerId = card.dataset.speakerId;
                 if (speakerId) {
                     this.showSpeakerModal(speakerId, card);
                 }
@@ -585,60 +635,88 @@ class GSBConference {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     }
 
-    showSpeakerModal(speakerId, cardElement) {
+    async showSpeakerModal(speakerId, cardElement) {
         const modal = document.getElementById('speakerModal');
         const modalImage = document.getElementById('speakerModalImage');
         const modalName = document.getElementById('speakerModalName');
         const modalTitle = document.getElementById('speakerModalTitle');
         const modalTopic = document.getElementById('speakerModalTopic');
         const modalBio = document.getElementById('speakerModalBio');
-        
+
         if (!modal || !modalImage || !modalName || !modalTitle || !modalTopic || !modalBio) {
             console.error('Speaker modal elements not found');
             return;
         }
 
+        let speakerData = null;
         try {
-            // Extract information from the clicked card
-            const speakerImage = cardElement.querySelector('.speaker-image img');
-            const speakerName = cardElement.querySelector('h4');
-            const speakerPosition = cardElement.querySelector('.speaker-title');
-            const speakerSessionTopic = cardElement.querySelector('.speaker-topic');
-            const speakerBioElement = cardElement.querySelector('.speaker-bio');
-            
-            // Populate modal with speaker information
-            if (speakerImage) {
-                modalImage.src = speakerImage.src;
-                modalImage.alt = speakerImage.alt;
+            // Try to get speaker data from Sessionize API
+            if (!this.sessionizeData || !this.sessionizeData.speakers) {
+                const response = await fetch('https://sessionize.com/api/v2/2arq0ql8/view/All');
+                this.sessionizeData = await response.json();
             }
-            
-            if (speakerName) {
-                modalName.textContent = speakerName.textContent;
-            }
-            
-            if (speakerPosition) {
-                modalTitle.textContent = speakerPosition.textContent;
-            }
-            
-            if (speakerSessionTopic) {
-                modalTopic.textContent = speakerSessionTopic.textContent;
-            }
-            
-            if (speakerBioElement) {
-                modalBio.innerHTML = speakerBioElement.innerHTML;
+            speakerData = this.sessionizeData.speakers.find(s => s.id === speakerId);
+        } catch (error) {
+            console.error('Error fetching speaker data from Sessionize API:', error);
+        }
+
+        try {
+            if (speakerData) {
+                // Use Sessionize API data for modal
+                modalImage.src = speakerData.profilePicture || '';
+                modalImage.alt = speakerData.fullName || '';
+                modalName.textContent = speakerData.fullName || '';
+                modalTitle.textContent = speakerData.tagLine || '';
+                // Find the session topic if available
+                let sessionTopic = '';
+                if (speakerData.sessions && speakerData.sessions.length > 0 && this.sessionizeData.sessions) {
+                    const session = this.sessionizeData.sessions.find(sess => sess.speakers && sess.speakers.includes(speakerId));
+                    if (session && session.title) {
+                        sessionTopic = session.title;
+                    }
+                }
+                modalTopic.textContent = sessionTopic;
+                // Bio
+                if (speakerData.bio) {
+                    modalBio.innerHTML = speakerData.bio;
+                } else {
+                    modalBio.innerHTML = '<p>Biography information will be available soon.</p>';
+                }
             } else {
-                modalBio.innerHTML = '<p>Biography information will be available soon.</p>';
+                // Fallback: Extract information from the clicked card
+                const speakerImage = cardElement.querySelector('.speaker-image img');
+                const speakerName = cardElement.querySelector('h4');
+                const speakerPosition = cardElement.querySelector('.speaker-title');
+                const speakerSessionTopic = cardElement.querySelector('.speaker-topic');
+                const speakerBioElement = cardElement.querySelector('.speaker-bio');
+
+                if (speakerImage) {
+                    modalImage.src = speakerImage.src;
+                    modalImage.alt = speakerImage.alt;
+                }
+                if (speakerName) {
+                    modalName.textContent = speakerName.textContent;
+                }
+                if (speakerPosition) {
+                    modalTitle.textContent = speakerPosition.textContent;
+                }
+                if (speakerSessionTopic) {
+                    modalTopic.textContent = speakerSessionTopic.textContent;
+                }
+                if (speakerBioElement) {
+                    modalBio.innerHTML = speakerBioElement.innerHTML;
+                } else {
+                    modalBio.innerHTML = '<p>Biography information will be available soon.</p>';
+                }
             }
-            
+
             // Show modal
             modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
-            
-            // Animate in
             setTimeout(() => {
                 modal.classList.add('show');
             }, 10);
-            
+
         } catch (error) {
             console.error('Error showing speaker modal:', error);
             modalName.textContent = 'Speaker Information';
