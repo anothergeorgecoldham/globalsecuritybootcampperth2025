@@ -386,7 +386,7 @@ a:hover {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(30, 41, 59, 0.45);
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.85), rgba(29, 78, 216, 0.85));
     z-index: 2;
 }
 
@@ -1391,6 +1391,13 @@ a:hover {
 .btn-back-to-top:hover {
     background: var(--primary-dark);
     transform: translateY(-2px);
+}
+
+/* Remove animation for contact info-card so it is always visible */
+#contact .info-card {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
 }
 
 /* Responsive Design */

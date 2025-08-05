@@ -464,14 +464,18 @@ class GSBConference {
     }
 
     initScrollAnimations() {
-        const animatedElements = document.querySelectorAll([
+        // Only animate elements except the contact section (info-card inside #contact)
+        const animatedElements = Array.from(document.querySelectorAll([
             '.speaker-card',
             '.pricing-card',
             '.timeline-item',
             '.partner-logo',
             '.about-stats',
             '.info-card'
-        ].join(', '));
+        ].join(', '))).filter(el => {
+            // If element is inside #contact, skip animation
+            return !el.closest('#contact');
+        });
 
         const observerOptions = {
             threshold: 0.1,
@@ -494,6 +498,14 @@ class GSBConference {
             element.style.transition = `opacity 0.6s ease ${index * 0.1}s, transform 0.6s ease ${index * 0.1}s`;
             animationObserver.observe(element);
         });
+
+        // Instantly show contact info-card (no animation)
+        const contactInfoCard = document.querySelector('#contact .info-card');
+        if (contactInfoCard) {
+            contactInfoCard.style.opacity = '1';
+            contactInfoCard.style.transform = 'none';
+            contactInfoCard.style.transition = 'none';
+        }
     }
 
     handleScrollAnimations() {
