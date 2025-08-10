@@ -35,7 +35,9 @@ class GSBConference {
         this.initBackToTop();
         this.initNavbarToggle();
         this.initAnimations();
-        this.initInteractiveElements(); this.loadSpeakersFromSessionize(); this.loadSessionsFromSessionize();
+        this.initInteractiveElements(); 
+        this.loadSpeakersFromSessionize(); 
+        this.loadSessionsFromSessionize();
     }
 
     onWindowLoad() {
@@ -316,6 +318,12 @@ class GSBConference {
                 }
             });
         });
+    }
+
+    // Initialize scroll effects
+    initScrollEffects() {
+        // Basic scroll effects implementation
+        this.initScrollAnimations();
     }
 
     // Form handling and validation
@@ -1169,6 +1177,185 @@ class GSBConference {
                 element.style.transition = 'none';
                 element.style.opacity = '1';
                 element.style.transform = 'none';
+            }
+        });
+    }
+
+    // Load speakers from existing HTML data (fallback when Sessionize API is not available)
+    loadSpeakersFromSessionize() {
+        try {
+            // Extract speaker data from the agenda HTML
+            const speakerData = this.extractSpeakerDataFromHTML();
+            this.populateSpeakerCards(speakerData);
+        } catch (error) {
+            console.error('Error loading speakers from HTML:', error);
+        }
+    }
+
+    // Load sessions from existing HTML data
+    loadSessionsFromSessionize() {
+        try {
+            // Extract session data from the agenda HTML for copresenter handling
+            const sessionData = this.extractSessionDataFromHTML();
+            this.updateAgendaWithCopresenters(sessionData);
+        } catch (error) {
+            console.error('Error loading sessions from HTML:', error);
+        }
+    }
+
+    // Extract speaker information from the HTML agenda
+    extractSpeakerDataFromHTML() {
+        const speakers = [];
+        const sessions = document.querySelectorAll('.session-card.clickable');
+        
+        sessions.forEach(session => {
+            const sessionId = session.dataset.sessionId;
+            const title = session.querySelector('h5')?.textContent || '';
+            const speakerElement = session.querySelector('strong');
+            const companyElement = session.querySelector('.company, p:not(.session-desc)');
+            const descElement = session.querySelector('.session-desc');
+            
+            if (speakerElement) {
+                const speakerName = speakerElement.textContent.trim();
+                const company = companyElement ? companyElement.textContent.trim() : '';
+                const sessionTitle = title;
+                const description = descElement ? descElement.textContent.trim() : '';
+                
+                // Generate speaker ID from name
+                const speakerId = speakerName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                
+                // Check if speaker already exists (to handle multiple sessions by same speaker)
+                let existingSpeaker = speakers.find(s => s.id === speakerId);
+                
+                if (!existingSpeaker) {
+                    speakers.push({
+                        id: speakerId,
+                        name: speakerName,
+                        title: company,
+                        company: company,
+                        sessionTitle: sessionTitle,
+                        bio: description || `Join ${speakerName} for an insightful session on Microsoft Security technologies and best practices.`,
+                        image: '', // Will use placeholder
+                        sessions: [{ id: sessionId, title: sessionTitle }]
+                    });
+                } else {
+                    // Add additional session for this speaker
+                    existingSpeaker.sessions.push({ id: sessionId, title: sessionTitle });
+                    if (!existingSpeaker.sessionTitle.includes(sessionTitle)) {
+                        existingSpeaker.sessionTitle += `, ${sessionTitle}`;
+                    }
+                }
+            }
+        });
+        
+        return speakers;
+    }
+
+    // Extract session information including potential copresenters
+    extractSessionDataFromHTML() {
+        const sessions = [];
+        const sessionElements = document.querySelectorAll('.session-card.clickable');
+        
+        sessionElements.forEach(session => {
+            const sessionId = session.dataset.sessionId;
+            const title = session.querySelector('h5')?.textContent || '';
+            const speakers = [];
+            
+            // Look for speaker names in the session - only get the first strong element which should be the speaker name
+            const firstSpeakerEl = session.querySelector('strong');
+            if (firstSpeakerEl) {
+                const name = firstSpeakerEl.textContent.trim();
+                if (name && name !== 'Date' && name !== 'Location' && name !== 'Audience') {
+                    speakers.push({
+                        name: name,
+                        id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+                    });
+                }
+            }
+            
+            // Note: For now we're only handling single speakers as no real copresenters are detected
+            // in the current HTML. The copresenter logic can be enhanced when actual copresenter 
+            // data is available from Sessionize API
+            
+            if (sessionId && title) {
+                sessions.push({
+                    id: sessionId,
+                    title: title,
+                    speakers: speakers
+                });
+            }
+        });
+        
+        return sessions;
+    }
+
+    // Populate speaker cards with extracted data
+    populateSpeakerCards(speakers) {
+        speakers.forEach(speaker => {
+            const speakerCard = document.querySelector(`[data-speaker-id="${speaker.id}"]`);
+            if (speakerCard) {
+                // Update image
+                const imgEl = speakerCard.querySelector('.speaker-image img');
+                if (imgEl) {
+                    // Use a placeholder image or default
+                    imgEl.src = speaker.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(speaker.name)}&size=200&background=0084FF&color=fff`;
+                    imgEl.alt = speaker.name;
+                }
+                
+                // Update name
+                const nameEl = speakerCard.querySelector('h4');
+                if (nameEl) {
+                    nameEl.textContent = speaker.name;
+                }
+                
+                // Update title/position
+                const titleEl = speakerCard.querySelector('.speaker-title');
+                if (titleEl) {
+                    titleEl.textContent = speaker.title;
+                }
+                
+                // Update topic (session title)
+                const topicEl = speakerCard.querySelector('.speaker-topic');
+                if (topicEl) {
+                    topicEl.textContent = speaker.sessionTitle;
+                }
+                
+                // Update bio
+                const bioEl = speakerCard.querySelector('.speaker-bio');
+                if (bioEl) {
+                    bioEl.innerHTML = `<p>${speaker.bio}</p>`;
+                    bioEl.style.display = 'none'; // Keep hidden initially
+                }
+                
+                // Make sure the card is visible (override animation states)
+                speakerCard.style.opacity = '1';
+                speakerCard.style.transform = 'translateY(0)';
+                speakerCard.style.visibility = 'visible';
+                speakerCard.style.display = 'block';
+            }
+        });
+    }
+
+    // Update agenda to show copresenters if any are found
+    updateAgendaWithCopresenters(sessions) {
+        sessions.forEach(session => {
+            if (session.speakers.length > 1) {
+                const sessionElement = document.querySelector(`[data-session-id="${session.id}"]`);
+                if (sessionElement) {
+                    // Find the speaker paragraph and update it to show all speakers
+                    const speakerParagraph = sessionElement.querySelector('p strong')?.parentElement;
+                    if (speakerParagraph) {
+                        const speakerNames = session.speakers.map(s => s.name).join(' & ');
+                        const existingText = speakerParagraph.innerHTML;
+                        
+                        // Replace the first speaker name with all speaker names
+                        const updatedText = existingText.replace(
+                            /<strong>[^<]+<\/strong>/,
+                            `<strong>${speakerNames}</strong>`
+                        );
+                        speakerParagraph.innerHTML = updatedText;
+                    }
+                }
             }
         });
     }
